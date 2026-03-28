@@ -1,70 +1,75 @@
 #include<inttypes.h>
+#include<stdbool.h>
 #include "./loadFile.c"
 #include "./otfStructures.c"
+#include "./dictOperator.c"
+#include "./printFontData.c"
 
-void printFontInfo(struct TableDirectory font){
-	printf(
-		"--------------------------- Table Directory ---------------------------\n"
-		"sfntVersion: %X\n"
-		"numTables: %X\n"
-		"searchRange: %X\n"
-		"entrySelector: %X\n"
-		"rangeShift: %X\n",
-		font.sfntVersion, font.numTables, font.searchRange, font.entrySelector, font.rangeShift);
-	printf("---------------------------- Table Records ----------------------------\n");
-	for (int i=0 ; i<font.numTables ; i++){
-		printf(
-			"\nTable %d.\n"
-			"Tag: %c%c%c%c\n"
-			"Checksum: %X\n"
-			"Offset: %X\n"
-			"Length: %X\n",
-			i+1,font.tableRecords[i].tableTag[0], font.tableRecords[i].tableTag[1], font.tableRecords[i].tableTag[2], font.tableRecords[i].tableTag[3],
-			font.tableRecords[i].checksum, font.tableRecords[i].offset, font.tableRecords[i].length);
-	}
-	printf("----------------------------- CFF Table ------------------------------\n");
-	printf("Version: %d.%d.\n", (*font.cffTable).header.major, (*font.cffTable).header.minor);
-	printf("Header size: %d\n"
-			"Absolute offset size: %d\n",
-			(*font.cffTable).header.hdrSize, (*font.cffTable).header.offSize);
+void decodeTopDictData(struct TopDictIndex dict){
+
 }
 
-void littleToBigEndian(struct TableDirectory *font){
-	(*font).sfntVersion = __builtin_bswap32((*font).sfntVersion);
-	(*font).numTables = __builtin_bswap16((*font).numTables);
-	(*font).searchRange = __builtin_bswap16((*font).searchRange);
-	(*font).entrySelector = __builtin_bswap16((*font).entrySelector);
-	(*font).rangeShift = __builtin_bswap16((*font).rangeShift);
-	for (int i=0 ; i<(*font).numTables ; i++){
-		(*font).tableRecords[i].checksum = __builtin_bswap32((*font).tableRecords[i].checksum);
-		(*font).tableRecords[i].offset = __builtin_bswap32((*font).tableRecords[i].offset);
-		(*font).tableRecords[i].length = __builtin_bswap32((*font).tableRecords[i].length);
-	}
+void loadCFFTable(struct TableDirectory *dir, FILE *file){
+	struct CFFTable *table = malloc(sizeof(struct CFFTable));
+	uint16_t cffTable = returnTableNumber(dir,"CFF");
+	struct TableRecord CFFTable = dir->tableRecords[cffTable];
+	fseek(file, CFFTable.offset, SEEK_SET);
+
+	fread(table, sizeof(struct CFFHeader), 1, file);
+	fread(&table->nameIndex, sizeof(Card16) + sizeof(OffSize), 1, file);
+	table->nameIndex.count = __builtin_bswap16(table->nameIndex.count);
+	//littleToBigEndianCFFTable(table);
+
+	table->nameIndex.offset = malloc(sizeof(uint8_t)*table->nameIndex.offSize*table->nameIndex.count + sizeof(uint8_t));
+	fread(table->nameIndex.offset, sizeof(uint8_t), table->nameIndex.count + 1, file);
+	{int indexDataSize = 0;
+	for(int i=0 ; i<table->nameIndex.count ; i++) 
+		indexDataSize += table->nameIndex.offset[i+1]-1;
+	table->nameIndex.data = malloc(sizeof(uint8_t)*indexDataSize);
+	fread(table->nameIndex.data, sizeof(Card8), indexDataSize, file);}
+
+	fread(&table->topDictIndex, sizeof(Card16) + sizeof(OffSize), 1, file);
+	table->topDictIndex.count = __builtin_bswap16(table->topDictIndex.count);
+	table->topDictIndex.offset = malloc(sizeof(uint8_t)*table->topDictIndex.offSize*table->topDictIndex.count + sizeof(uint8_t)*table->topDictIndex.offSize);
+	fread(table->topDictIndex.offset, sizeof(uint8_t)*table->topDictIndex.offSize, table->topDictIndex.count + 1, file);
+	for(int i=0 ; i<table->topDictIndex.count + 1 ; i++)
+		table->topDictIndex.offset[i] = __builtin_bswap16(table->topDictIndex.offset[i]);
+	{int indexDataSize = 0;
+	for(int i=0 ; i<table->topDictIndex.count ; i++) 
+		indexDataSize += table->topDictIndex.offset[i+1]-1;
+	table->topDictIndex.data = malloc(sizeof(uint8_t)*indexDataSize);
+	fread(table->topDictIndex.data, sizeof(Card8), indexDataSize, file);}
+
+	printf("\n");
+	decodeTopDictData(table->topDictIndex);
+
+
+
+	free(table);
+	free(table->nameIndex.offset);
+	free(table->nameIndex.data);
+	free(table->topDictIndex.offset);
+	free(table->topDictIndex.data);
 }
 
 int main(){
 	char filePath[100] = "./Fonts/HelveticaRegular/Helvetica Regular.otf";
-	BUFFER_TYPE *fileBuffer = malloc(BUFFER_SIZE*sizeof(BUFFER_TYPE));
 
-	struct TableDirectory font;
+	struct TableDirectory* font = malloc(sizeof(struct TableDirectory));
+	FILE* fontFile = fopen(filePath,"rb");
 
-	int fileSize = loadFileToBuffer(&fileBuffer, filePath);
+	fread(&font->sfntVersion, sizeof(uint32_t), 1, fontFile);
+	fread(&font->numTables, sizeof(uint16_t), 4, fontFile);
+	font->tableRecords = malloc(sizeof(struct TableRecord)*font->numTables);
+	fread(font->tableRecords, sizeof(struct TableRecord),font->numTables, fontFile);
+	littleToBigEndian(font);
 
-	font.sfntVersion = *(uint32_t *) fileBuffer;
-	font.numTables = *(uint16_t *) (fileBuffer + 4);
-	font.searchRange = *(uint16_t *) (fileBuffer + 6);
-	font.entrySelector = *(uint16_t *) (fileBuffer + 8);
-	font.rangeShift = *(uint16_t *) (fileBuffer + 10);
-	font.tableRecords = (struct TableRecord *) (fileBuffer + 12);
-
-	littleToBigEndian(&font);
-
-	font.cffTable = (struct CFFTable *) (fileBuffer + font.tableRecords[0].offset);
-
-
+	loadCFFTable(font, fontFile);
 //	printBufferToFile(fileBuffer, fileSize);
-	printFontInfo(font);
 
-	free(fileBuffer);
+	// printFontInfo(*font);
+	free(font);
+	free(font->tableRecords);
+	fclose(fontFile);
 	return 0;
 }
