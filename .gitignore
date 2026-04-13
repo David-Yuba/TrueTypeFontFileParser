@@ -1,2 +1,5 @@
 *.exe
 file.txt
+*.otf
+*.ttf
+*.txt
