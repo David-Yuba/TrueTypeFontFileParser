@@ -5,8 +5,8 @@
 void printFontInfo(struct TableDirectory font){
 	printf(
 		"--------------------------- Table Directory ---------------------------\n"
-		"sfntVersion: %X\n"
-		"numTables: %X\n"
+		"sfntVersion: %08X\n"
+		"numTables: %d\n"
 		"searchRange: %X\n"
 		"entrySelector: %X\n"
 		"rangeShift: %X\n",
@@ -65,4 +65,5 @@ void printCFFTable(struct CFFTable* table){
 			printf("%X ", table->topDictIndex.data[j + previousOffset]);
 		}
 	}
+	printf("\n");
 }

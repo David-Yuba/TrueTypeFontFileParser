@@ -9,7 +9,7 @@ void decodeTopDictData(struct TopDictIndex dict){
 
 }
 
-void loadCFFTable(struct TableDirectory *dir, FILE *file){
+struct CFFTable* loadCFFTable(struct TableDirectory *dir, FILE *file){
 	struct CFFTable *table = malloc(sizeof(struct CFFTable));
 	uint16_t cffTable = returnTableNumber(dir,"CFF");
 	struct TableRecord CFFTable = dir->tableRecords[cffTable];
@@ -34,28 +34,25 @@ void loadCFFTable(struct TableDirectory *dir, FILE *file){
 	fread(table->topDictIndex.offset, sizeof(uint8_t)*table->topDictIndex.offSize, table->topDictIndex.count + 1, file);
 	for(int i=0 ; i<table->topDictIndex.count + 1 ; i++)
 		table->topDictIndex.offset[i] = __builtin_bswap16(table->topDictIndex.offset[i]);
-	{int indexDataSize = 0;
-	for(int i=0 ; i<table->topDictIndex.count ; i++) 
-		indexDataSize += table->topDictIndex.offset[i+1]-1;
-	table->topDictIndex.data = malloc(sizeof(uint8_t)*indexDataSize);
-	fread(table->topDictIndex.data, sizeof(Card8), indexDataSize, file);}
+	{
+		int indexDataSize = 0;
+		for(int i=0 ; i<table->topDictIndex.count ; i++) 
+			indexDataSize += table->topDictIndex.offset[i+1]-1;
+		table->topDictIndex.data = malloc(sizeof(uint8_t)*indexDataSize);
+		fread(table->topDictIndex.data, sizeof(Card8), indexDataSize, file);
+	}
 
 	printf("\n");
 	decodeTopDictData(table->topDictIndex);
 
-
-
-	free(table);
-	free(table->nameIndex.offset);
-	free(table->nameIndex.data);
-	free(table->topDictIndex.offset);
-	free(table->topDictIndex.data);
+	return table;
 }
 
 int main(){
-	char filePath[100] = "./Fonts/HelveticaRegular/Helvetica Regular.otf";
+	char filePath[100] = "./Fonts/Helvetica Font Family/Helvetica.ttf";
 
 	struct TableDirectory* font = malloc(sizeof(struct TableDirectory));
+	struct CFFTable* cffTable;
 	FILE* fontFile = fopen(filePath,"rb");
 
 	fread(&font->sfntVersion, sizeof(uint32_t), 1, fontFile);
@@ -64,12 +61,18 @@ int main(){
 	fread(font->tableRecords, sizeof(struct TableRecord),font->numTables, fontFile);
 	littleToBigEndian(font);
 
-	loadCFFTable(font, fontFile);
-//	printBufferToFile(fileBuffer, fileSize);
+	cffTable = loadCFFTable(font, fontFile);
 
-	// printFontInfo(*font);
-	free(font);
+	printFontInfo(*font);
+	//printCFFTable(cffTable);
+
+	free(cffTable->nameIndex.offset);
+	free(cffTable->nameIndex.data);
+	free(cffTable->topDictIndex.offset);
+	free(cffTable->topDictIndex.data);
+	free(cffTable);
 	free(font->tableRecords);
+	free(font);
 	fclose(fontFile);
 	return 0;
 }
