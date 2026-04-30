@@ -22,43 +22,11 @@ struct NameIndex {
 	Card8 *data;
 };
 
-struct TopDictData {
-	SID version;
-	SID Notice;
-	SID Copyright;
-	SID FullName;
-	SID FamilyName;
-	SID Weight;
-};
-
 struct TopDictIndex {
 	Card16 count;
 	OffSize offSize;
 	Offset16 *offset;
 	Card8 *data;
-};
-
-struct CFFHeader {
-	Card8 major;
-	Card8 minor;
-	Card8 hdrSize;
-	OffSize offSize;
-};
-
-struct CFFTable {
-	struct CFFHeader header;
-	struct NameIndex nameIndex;
-	struct TopDictIndex topDictIndex;
-//	struct StringIndex stringIndex;
-//	struct GlobalSubrIndex globalSubrIndex;
-//	struct Encodings encodings;
-//	struct Charset charset;
-//	struct FDSelect fdSelect;
-//	struct CharStringsIndex charStringsIndex;
-//	struct FontDictIndex fontDictIndex;
-//	struct PrivateDict privateDict;
-//	struct LocalSubrIndex localSubrIndex;
-//	struct CopyRight copyright;
 };
 
 struct TableDirectory {
@@ -100,7 +68,4 @@ void littleToBigEndian(struct TableDirectory *font){
 		(*font).tableRecords[i].offset = __builtin_bswap32((*font).tableRecords[i].offset);
 		(*font).tableRecords[i].length = __builtin_bswap32((*font).tableRecords[i].length);
 	}
-}
-
-void littleToBigEndianCFFTable(struct CFFTable* table){
 }

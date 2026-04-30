@@ -10,6 +10,7 @@ void printBuffer(BUFFER_TYPE *buffer, int size){
 		if (i % 4 == 0) printf("\n%p\t", buffer + i);
 		printf("%8X ", buffer[i]);
 	}
+	putchar('\n');
 }
 
 void printBufferToFile(BUFFER_TYPE *buffer, int size){

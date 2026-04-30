@@ -1,58 +1,82 @@
 #include<inttypes.h>
 #include<stdbool.h>
+#include<string.h>
+#ifndef LOAD_FILE
+#define LOAD_FILE
 #include "./loadFile.c"
+#endif
 #include "./otfStructures.c"
 #include "./dictOperator.c"
 #include "./printFontData.c"
+#include "./cmapStructures.c"
 
-void decodeTopDictData(struct TopDictIndex dict){
+void* loadTableToBuffer(FILE* fontFile, struct TableDirectory* font, char tableName[], void* tableDataBuffer){
+	if(tableDataBuffer != NULL) free(tableDataBuffer);
+	int tableNumber = returnTableNumber(font, tableName);
+	struct TableRecord tableData = font->tableRecords[tableNumber];
 
+	tableDataBuffer = malloc(tableData.length);
+	fseek(fontFile, tableData.offset, SEEK_SET);
+	fread(tableDataBuffer, 1, tableData.length, fontFile);
+	//printBuffer(tableDataBuffer, tableData.length);
+
+	return tableDataBuffer;
 }
 
-struct CFFTable* loadCFFTable(struct TableDirectory *dir, FILE *file){
-	struct CFFTable *table = malloc(sizeof(struct CFFTable));
-	uint16_t cffTable = returnTableNumber(dir,"CFF");
-	struct TableRecord CFFTable = dir->tableRecords[cffTable];
-	fseek(file, CFFTable.offset, SEEK_SET);
+void parseCmap(void* tableBuffer){
+	Cmap_Header cmapTable;
+	
+	cmapTable.version = __builtin_bswap16(((uint16_t*)tableBuffer)[0]);
+	cmapTable.numTables = __builtin_bswap16(((uint16_t*)tableBuffer)[1]);
+	cmapTable.encodingRecords = malloc(cmapTable.numTables * sizeof(EncodingRecord));
+	memcpy(cmapTable.encodingRecords, ((char*)tableBuffer) + 4, cmapTable.numTables * sizeof(EncodingRecord));
+	littleToBigEndianCmapTable(&cmapTable);
+	uint32_t unicodeTableOffset = cmapTable.encodingRecords[findUnicodeSubtable(cmapTable)].subtableOffset;
 
-	fread(table, sizeof(struct CFFHeader), 1, file);
-	fread(&table->nameIndex, sizeof(Card16) + sizeof(OffSize), 1, file);
-	table->nameIndex.count = __builtin_bswap16(table->nameIndex.count);
-	//littleToBigEndianCFFTable(table);
+	RecordSubtable unicodeBitMapSubtable;
+	memcpy(&unicodeBitMapSubtable, (char *)tableBuffer + unicodeTableOffset, sizeof(RecordSubtable));
+	littleToBigEndianCmapSubtable(&unicodeBitMapSubtable);
 
-	table->nameIndex.offset = malloc(sizeof(uint8_t)*table->nameIndex.offSize*table->nameIndex.count + sizeof(uint8_t));
-	fread(table->nameIndex.offset, sizeof(uint8_t), table->nameIndex.count + 1, file);
-	{int indexDataSize = 0;
-	for(int i=0 ; i<table->nameIndex.count ; i++) 
-		indexDataSize += table->nameIndex.offset[i+1]-1;
-	table->nameIndex.data = malloc(sizeof(uint8_t)*indexDataSize);
-	fread(table->nameIndex.data, sizeof(Card8), indexDataSize, file);}
+	unicodeBitMapSubtable.endCode = malloc(sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2);
+	memcpy(unicodeBitMapSubtable.endCode, (char *)tableBuffer + unicodeTableOffset + 14, sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2);
 
-	fread(&table->topDictIndex, sizeof(Card16) + sizeof(OffSize), 1, file);
-	table->topDictIndex.count = __builtin_bswap16(table->topDictIndex.count);
-	table->topDictIndex.offset = malloc(sizeof(uint8_t)*table->topDictIndex.offSize*table->topDictIndex.count + sizeof(uint8_t)*table->topDictIndex.offSize);
-	fread(table->topDictIndex.offset, sizeof(uint8_t)*table->topDictIndex.offSize, table->topDictIndex.count + 1, file);
-	for(int i=0 ; i<table->topDictIndex.count + 1 ; i++)
-		table->topDictIndex.offset[i] = __builtin_bswap16(table->topDictIndex.offset[i]);
-	{
-		int indexDataSize = 0;
-		for(int i=0 ; i<table->topDictIndex.count ; i++) 
-			indexDataSize += table->topDictIndex.offset[i+1]-1;
-		table->topDictIndex.data = malloc(sizeof(uint8_t)*indexDataSize);
-		fread(table->topDictIndex.data, sizeof(Card8), indexDataSize, file);
-	}
+	memcpy(&(unicodeBitMapSubtable.reservedPad), (char *)tableBuffer + unicodeTableOffset + 14 + sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2, sizeof(uint16_t));
 
-	printf("\n");
-	decodeTopDictData(table->topDictIndex);
+	unicodeBitMapSubtable.startCode = malloc(sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2);
+	memcpy(unicodeBitMapSubtable.startCode, (char *)tableBuffer + unicodeTableOffset + 16 + sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2, sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2);
 
-	return table;
+	unicodeBitMapSubtable.idDelta = malloc(sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2);
+	memcpy(unicodeBitMapSubtable.idDelta, (char *)tableBuffer + unicodeTableOffset + 16 + 2 * sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2, sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2);
+
+	unicodeBitMapSubtable.idRangeOffset = malloc(sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2);
+	memcpy(unicodeBitMapSubtable.idRangeOffset, (char *)tableBuffer + unicodeTableOffset + 16 + 3 * sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2, sizeof(uint16_t) * unicodeBitMapSubtable.segCountX2 / 2);
+
+	littleToBigEndianCodes(&unicodeBitMapSubtable);
+
+	printCmapTable(cmapTable);
+	printRecordSubtable(unicodeBitMapSubtable);
+
+	uint16_t charsegment = get_segment_index(&unicodeBitMapSubtable, '7');
+	//uint16_t glyphid = *(unicodeBitMapSubtable.idRangeOffset[charsegment]/2 + ('7' - unicodeBitMapSubtable.startCode[charsegment]) + &unicodeBitMapSubtable.idRangeOffset[charsegment]);
+	uint16_t glyphid = '7' + unicodeBitMapSubtable.idDelta[charsegment];
+
+	printf("\nGlyphID: %d\n"
+		"SegmentIndex: %d\n", 
+		glyphid, charsegment);
+
+	free(unicodeBitMapSubtable.endCode);
+	free(unicodeBitMapSubtable.startCode);
+	free(unicodeBitMapSubtable.idDelta);
+	free(unicodeBitMapSubtable.idRangeOffset);
+	free(cmapTable.encodingRecords);
 }
 
 int main(){
 	char filePath[100] = "./Fonts/Helvetica Font Family/Helvetica.ttf";
 
 	struct TableDirectory* font = malloc(sizeof(struct TableDirectory));
-	struct CFFTable* cffTable;
+	void* tableDataBuffer = NULL;
+
 	FILE* fontFile = fopen(filePath,"rb");
 
 	fread(&font->sfntVersion, sizeof(uint32_t), 1, fontFile);
@@ -61,16 +85,11 @@ int main(){
 	fread(font->tableRecords, sizeof(struct TableRecord),font->numTables, fontFile);
 	littleToBigEndian(font);
 
-	cffTable = loadCFFTable(font, fontFile);
-
+	tableDataBuffer = loadTableToBuffer(fontFile, font, "cmap", tableDataBuffer);
 	printFontInfo(*font);
-	//printCFFTable(cffTable);
+	parseCmap(tableDataBuffer);
 
-	free(cffTable->nameIndex.offset);
-	free(cffTable->nameIndex.data);
-	free(cffTable->topDictIndex.offset);
-	free(cffTable->topDictIndex.data);
-	free(cffTable);
+	free(tableDataBuffer);
 	free(font->tableRecords);
 	free(font);
 	fclose(fontFile);
