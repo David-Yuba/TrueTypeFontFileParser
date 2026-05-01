@@ -9,8 +9,10 @@
 #include "./dictOperator.c"
 #include "./printFontData.c"
 #include "./cmapStructures.c"
+#include "./maxpStructures.c"
+#include "./horizontalTables.c"
 
-void* loadTableToBuffer(FILE* fontFile, struct TableDirectory* font, char tableName[], void* tableDataBuffer){
+void* loadTableToBuffer(FILE* fontFile, struct TableDirectory* font, char tableName[], void* tableDataBuffer, bool p){
 	if(tableDataBuffer != NULL) free(tableDataBuffer);
 	int tableNumber = returnTableNumber(font, tableName);
 	struct TableRecord tableData = font->tableRecords[tableNumber];
@@ -18,7 +20,7 @@ void* loadTableToBuffer(FILE* fontFile, struct TableDirectory* font, char tableN
 	tableDataBuffer = malloc(tableData.length);
 	fseek(fontFile, tableData.offset, SEEK_SET);
 	fread(tableDataBuffer, 1, tableData.length, fontFile);
-	//printBuffer(tableDataBuffer, tableData.length);
+	if(p) printBuffer(tableDataBuffer, tableData.length);
 
 	return tableDataBuffer;
 }
@@ -53,22 +55,50 @@ void parseCmap(void* tableBuffer){
 
 	littleToBigEndianCodes(&unicodeBitMapSubtable);
 
-	printCmapTable(cmapTable);
-	printRecordSubtable(unicodeBitMapSubtable);
+	//printCmapTable(cmapTable);
+	//printRecordSubtable(unicodeBitMapSubtable);
 
 	uint16_t charsegment = get_segment_index(&unicodeBitMapSubtable, '7');
 	//uint16_t glyphid = *(unicodeBitMapSubtable.idRangeOffset[charsegment]/2 + ('7' - unicodeBitMapSubtable.startCode[charsegment]) + &unicodeBitMapSubtable.idRangeOffset[charsegment]);
 	uint16_t glyphid = '7' + unicodeBitMapSubtable.idDelta[charsegment];
 
-	printf("\nGlyphID: %d\n"
-		"SegmentIndex: %d\n", 
-		glyphid, charsegment);
+//	printf("\nGlyphID: %d\n"
+//		"SegmentIndex: %d\n", 
+//		glyphid, charsegment);
 
 	free(unicodeBitMapSubtable.endCode);
 	free(unicodeBitMapSubtable.startCode);
 	free(unicodeBitMapSubtable.idDelta);
 	free(unicodeBitMapSubtable.idRangeOffset);
 	free(cmapTable.encodingRecords);
+}
+
+void parseMaxp(void* tableBuffer, MaxpTable *maxpTable){
+	
+	memcpy(maxpTable, tableBuffer, sizeof(MaxpTable));
+	littleToBigEndianMaxpTable(maxpTable);
+	//printfMaxpTable(*maxpTable);
+}
+
+void parseHorizontalHeader(void* tableBuffer, HorizontalHeader *horizontalHeader) {
+	memcpy(horizontalHeader, tableBuffer, sizeof(HorizontalHeader));
+	littleToBigEndianHorizontalHeader(horizontalHeader);
+	printfHorizontalHeader(*horizontalHeader);
+}
+
+void parseHorizontalMetrics(void* tableBuffer, MaxpTable maxpTable,HorizontalHeader horizontalHeader){
+	HorizontalMetrics horizontalMetrics;
+	horizontalMetrics.hMetrics = malloc(sizeof(LongHorMetric) * horizontalHeader.numberOfHMetrics);
+	horizontalMetrics.leftSideBearings = malloc(sizeof(int16_t) * (maxpTable.numGlyphs - horizontalHeader.numberOfHMetrics));
+
+	memcpy(horizontalMetrics.hMetrics, tableBuffer, sizeof(LongHorMetric) * horizontalHeader.numberOfHMetrics);
+	memcpy(horizontalMetrics.leftSideBearings, (LongHorMetric *)tableBuffer + horizontalHeader.numberOfHMetrics, sizeof(int16_t) * (maxpTable.numGlyphs - horizontalHeader.numberOfHMetrics));
+	littleToBigEndianHorizontalMetrics(maxpTable.numGlyphs, horizontalHeader, horizontalMetrics);
+
+	//printfHorizontalMetrics(maxpTable.numGlyphs, horizontalHeader, horizontalMetrics);
+	
+	free(horizontalMetrics.hMetrics);
+	free(horizontalMetrics.leftSideBearings);
 }
 
 int main(){
@@ -85,9 +115,22 @@ int main(){
 	fread(font->tableRecords, sizeof(struct TableRecord),font->numTables, fontFile);
 	littleToBigEndian(font);
 
-	tableDataBuffer = loadTableToBuffer(fontFile, font, "cmap", tableDataBuffer);
-	printFontInfo(*font);
+	tableDataBuffer = loadTableToBuffer(fontFile, font, "cmap", tableDataBuffer, 0);
+	//printFontInfo(*font);
 	parseCmap(tableDataBuffer);
+
+	tableDataBuffer = loadTableToBuffer(fontFile, font, "maxp", tableDataBuffer, 0);
+	MaxpTable maxpTable;
+	parseMaxp(tableDataBuffer, &maxpTable);
+
+	tableDataBuffer = loadTableToBuffer(fontFile, font, "hhea", tableDataBuffer, 0);
+	HorizontalHeader horizontalHeader;
+	parseHorizontalHeader(tableDataBuffer, &horizontalHeader);
+	
+	tableDataBuffer = loadTableToBuffer(fontFile, font, "hmtx", tableDataBuffer, 0);
+	parseHorizontalMetrics(tableDataBuffer, maxpTable, horizontalHeader);
+
+	tableDataBuffer = loadTableToBuffer(fontFile, font, "glyf", tableDataBuffer, 0);
 
 	free(tableDataBuffer);
 	free(font->tableRecords);
