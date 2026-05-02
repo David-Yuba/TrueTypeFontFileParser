@@ -11,8 +11,9 @@
 #include "./cmapStructures.c"
 #include "./maxpStructures.c"
 #include "./horizontalTables.c"
+#include "./headStructures.c"
 
-void* loadTableToBuffer(FILE* fontFile, struct TableDirectory* font, char tableName[], void* tableDataBuffer, bool p){
+void* loadTableToBuffer(FILE *fontFile, struct TableDirectory *font, char tableName[], void *tableDataBuffer, bool p){
 	if(tableDataBuffer != NULL) free(tableDataBuffer);
 	int tableNumber = returnTableNumber(font, tableName);
 	struct TableRecord tableData = font->tableRecords[tableNumber];
@@ -25,7 +26,7 @@ void* loadTableToBuffer(FILE* fontFile, struct TableDirectory* font, char tableN
 	return tableDataBuffer;
 }
 
-void parseCmap(void* tableBuffer){
+void parseCmap(void *tableBuffer){
 	Cmap_Header cmapTable;
 	
 	cmapTable.version = __builtin_bswap16(((uint16_t*)tableBuffer)[0]);
@@ -73,20 +74,20 @@ void parseCmap(void* tableBuffer){
 	free(cmapTable.encodingRecords);
 }
 
-void parseMaxp(void* tableBuffer, MaxpTable *maxpTable){
+void parseMaxp(void *tableBuffer, MaxpTable *maxpTable){
 	
 	memcpy(maxpTable, tableBuffer, sizeof(MaxpTable));
 	littleToBigEndianMaxpTable(maxpTable);
 	//printfMaxpTable(*maxpTable);
 }
 
-void parseHorizontalHeader(void* tableBuffer, HorizontalHeader *horizontalHeader) {
+void parseHorizontalHeader(void *tableBuffer, HorizontalHeader *horizontalHeader) {
 	memcpy(horizontalHeader, tableBuffer, sizeof(HorizontalHeader));
 	littleToBigEndianHorizontalHeader(horizontalHeader);
-	printfHorizontalHeader(*horizontalHeader);
+	//printfHorizontalHeader(*horizontalHeader);
 }
 
-void parseHorizontalMetrics(void* tableBuffer, MaxpTable maxpTable,HorizontalHeader horizontalHeader){
+void parseHorizontalMetrics(void *tableBuffer, MaxpTable maxpTable,HorizontalHeader horizontalHeader){
 	HorizontalMetrics horizontalMetrics;
 	horizontalMetrics.hMetrics = malloc(sizeof(LongHorMetric) * horizontalHeader.numberOfHMetrics);
 	horizontalMetrics.leftSideBearings = malloc(sizeof(int16_t) * (maxpTable.numGlyphs - horizontalHeader.numberOfHMetrics));
@@ -99,6 +100,16 @@ void parseHorizontalMetrics(void* tableBuffer, MaxpTable maxpTable,HorizontalHea
 	
 	free(horizontalMetrics.hMetrics);
 	free(horizontalMetrics.leftSideBearings);
+}
+
+void parseHeadTable(void *tableBuffer){
+	HeadTable table;
+	memcpy(&table, tableBuffer, sizeof(HeadTable));
+	littleToBigEndianHeadTable(&table);
+	printfHeadTable(table);
+}
+void parseLocaTable(void* tableBuffer, MaxpTable maxpTable){
+	
 }
 
 int main(){
@@ -129,6 +140,13 @@ int main(){
 	
 	tableDataBuffer = loadTableToBuffer(fontFile, font, "hmtx", tableDataBuffer, 0);
 	parseHorizontalMetrics(tableDataBuffer, maxpTable, horizontalHeader);
+
+	tableDataBuffer = loadTableToBuffer(fontFile, font, "head", tableDataBuffer, 1);
+	parseHeadTable(tableDataBuffer);
+
+	tableDataBuffer = loadTableToBuffer(fontFile, font, "loca", tableDataBuffer, 0);
+	parseLocaTable(tableDataBuffer, maxpTable);
+
 
 	tableDataBuffer = loadTableToBuffer(fontFile, font, "glyf", tableDataBuffer, 0);
 
