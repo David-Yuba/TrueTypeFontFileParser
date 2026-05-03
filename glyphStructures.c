@@ -3,6 +3,8 @@
 #include<inttypes.h>
 #endif
 
+#pragma pack(1)
+
 typedef struct GlyphHeader {
     uint16_t numberOfContours;
     uint16_t xMin;
@@ -32,17 +34,40 @@ typedef struct TrueTypeOutline16 {
 typedef struct Glyph8 {
     GlyphHeader header;
     TrueTypeOutline8 fontOutline;
-} Glyph;
+} Glyph8;
 
 typedef struct Glyph16 {
     GlyphHeader header;
     TrueTypeOutline16 fontOutline;
-} Glyph;
+} Glyph16;
 
 typedef struct LocaTable16{
     uint16_t *offsets;
-} LocaTable;
+} LocaTable16;
 
 typedef struct LocaTable32{
     uint32_t *offsets;
-} LocaTable;
+} LocaTable32;
+
+void littleToBigEndianLocaTable16(LocaTable16 *table, uint16_t numGlyphs){
+    for(int i=0 ; i<numGlyphs+1 ; i++){
+        table->offsets[i] = __builtin_bswap16(table->offsets[i]);
+    }
+}
+void littleToBigEndianLocaTable32(LocaTable32 *table, uint32_t numGlyphs){
+    for(int i=0 ; i<numGlyphs+1 ; i++){
+        table->offsets[i] = __builtin_bswap32(table->offsets[i]);
+    }
+}
+void printfLocaTable16(LocaTable16 table, uint16_t numGlyphs){
+    for(int i=0 ; i<numGlyphs+1 ; i++){
+        printf("%d\t", table.offsets[i]);
+    }
+    printf("\n");
+}
+void printfLocaTable32(LocaTable32 table, uint32_t numGlyphs){
+    for(int i=0 ; i<numGlyphs+1 ; i++){
+        printf("%d\t", table.offsets[i]);
+    }
+    printf("\n");
+}

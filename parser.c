@@ -12,6 +12,7 @@
 #include "./maxpStructures.c"
 #include "./horizontalTables.c"
 #include "./headStructures.c"
+#include "./glyphStructures.c"
 
 void* loadTableToBuffer(FILE *fontFile, struct TableDirectory *font, char tableName[], void *tableDataBuffer, bool p){
 	if(tableDataBuffer != NULL) free(tableDataBuffer);
@@ -102,14 +103,24 @@ void parseHorizontalMetrics(void *tableBuffer, MaxpTable maxpTable,HorizontalHea
 	free(horizontalMetrics.leftSideBearings);
 }
 
-void parseHeadTable(void *tableBuffer){
-	HeadTable table;
-	memcpy(&table, tableBuffer, sizeof(HeadTable));
-	littleToBigEndianHeadTable(&table);
-	printfHeadTable(table);
+void parseHeadTable(void *tableBuffer, HeadTable *table){
+	memcpy(table, tableBuffer, sizeof(HeadTable));
+	littleToBigEndianHeadTable(table);
+	//printfHeadTable(*table);
 }
-void parseLocaTable(void* tableBuffer, MaxpTable maxpTable){
-	
+
+void parseLocaTable16(void *tableBuffer, MaxpTable maxpTable, LocaTable16 *table){
+	table->offsets = malloc(sizeof(uint16_t) * maxpTable.numGlyphs);
+	memcpy(table->offsets, tableBuffer, sizeof(LocaTable16) * sizeof(maxpTable.numGlyphs));
+	littleToBigEndianLocaTable16(table, maxpTable.numGlyphs);
+	printf("%d\n", maxpTable.numGlyphs);
+	//printfLocaTable16(*table, maxpTable.numGlyphs);
+}
+void parseLocaTable32(void *tableBuffer, MaxpTable maxpTable, LocaTable32 *table){
+	table->offsets = malloc(sizeof(uint32_t) * maxpTable.numGlyphs);
+	memcpy(table->offsets, tableBuffer, sizeof(LocaTable32) * maxpTable.numGlyphs);
+	littleToBigEndianLocaTable32(table, maxpTable.numGlyphs);
+	//printfLocaTable32(*table, maxpTable.numGlyphs);
 }
 
 int main(){
@@ -141,12 +152,19 @@ int main(){
 	tableDataBuffer = loadTableToBuffer(fontFile, font, "hmtx", tableDataBuffer, 0);
 	parseHorizontalMetrics(tableDataBuffer, maxpTable, horizontalHeader);
 
-	tableDataBuffer = loadTableToBuffer(fontFile, font, "head", tableDataBuffer, 1);
-	parseHeadTable(tableDataBuffer);
+	HeadTable headTable;
+	tableDataBuffer = loadTableToBuffer(fontFile, font, "head", tableDataBuffer, 0);
+	parseHeadTable(tableDataBuffer, &headTable);
 
+	LocaTable16 locaTable16;
+	locaTable16.offsets = NULL;
+	LocaTable32 locaTable32;
+	locaTable32.offsets = NULL;
 	tableDataBuffer = loadTableToBuffer(fontFile, font, "loca", tableDataBuffer, 0);
-	parseLocaTable(tableDataBuffer, maxpTable);
-
+	if(!headTable.indexToLocFormat)
+		parseLocaTable16(tableDataBuffer, maxpTable, &locaTable16);
+	else
+		parseLocaTable32(tableDataBuffer, maxpTable, &locaTable32);
 
 	tableDataBuffer = loadTableToBuffer(fontFile, font, "glyf", tableDataBuffer, 0);
 
